@@ -13,7 +13,6 @@ from DeComp.definitions import (COMPRESS_DEFINITIONS, DECOMPRESS_DEFINITIONS,
 from DeComp.contents import ContentsMap
 
 from catalyst import log
-import catalyst.config
 from catalyst.context import namespace
 from catalyst.defaults import (confdefaults, option_messages,
                                DEFAULT_CONFIG_FILE, valid_config_file_values)
@@ -276,11 +275,6 @@ def _main(parser, opts):
         myconfigs = [DEFAULT_CONFIG_FILE]
     myspecfile = opts.file
 
-    mycmdline = list()
-    if opts.snapshot:
-        mycmdline.append('target: snapshot')
-        mycmdline.append('snapshot_treeish: ' + opts.snapshot)
-
     conf_values['DEBUG'] = opts.debug
     conf_values['VERBOSE'] = opts.debug or opts.verbose
 
@@ -299,7 +293,7 @@ def _main(parser, opts):
         options.append('enter-chroot')
 
     # Make sure we have some work before moving further.
-    if not myspecfile and not mycmdline:
+    if not myspecfile and not opts.snapshot:
         parser.error('please specify one of either -f or -C or -s')
 
     # made it this far so start by outputting our version info
@@ -320,7 +314,6 @@ def _main(parser, opts):
     # initialize our (de)compression definitions
     conf_values['decompress_definitions'] = DECOMPRESS_DEFINITIONS
     conf_values['compress_definitions'] = COMPRESS_DEFINITIONS
-    # TODO add capability to config/spec new definitions
 
     if "digests" in conf_values:
         valid_digests = hashlib.algorithms_available
@@ -338,16 +331,15 @@ def _main(parser, opts):
 
     if myspecfile:
         log.notice("Processing spec file: %s", myspecfile)
-        spec = catalyst.config.SpecParser(myspecfile)
-        addlargs.update(spec.get_values())
-
-    if mycmdline:
         try:
-            cmdline = catalyst.config.SpecParser()
-            cmdline.parse_lines(mycmdline)
-            addlargs.update(cmdline.get_values())
-        except CatalystError:
-            log.critical('Could not parse commandline')
+            addlargs.update(toml.load(myspecfile))
+        except Exception as e:
+            log.critical('Could not find parse spec file: %s: %s',
+                         myspecfile, e)
+
+    if opts.snapshot:
+        addlargs['target'] = 'snapshot'
+        addlargs['snapshot_treeish'] = opts.snapshot
 
     if "target" not in addlargs:
         raise CatalystError("Required value \"target\" not specified.")
